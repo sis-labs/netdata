@@ -15,6 +15,12 @@ fi
 LC_ALL=C
 umask 022
 
+# Be nice on production environments
+renice 19 $$ >/dev/null 2>/dev/null
+
+processors=$(cat /proc/cpuinfo  | grep ^processor | wc -l)
+[ $(( processors )) -lt 1 ] && processors=1
+
 # you can set CFLAGS before running installer
 CFLAGS="${CFLAGS--O3}"
 
@@ -133,7 +139,7 @@ get_git_config_signatures() {
 
     echo >configs.signatures.tmp
 
-    for x in $(find conf.d -name \*.conf)
+    for x in $(find conf.d -name \*.conf | sort)
     do
             x="${x/conf.d\//}"
             echo "${x}"
@@ -427,7 +433,7 @@ if [ -f src/netdata ]
 fi
 
 echo >&2 "Compiling netdata ..."
-run make || exit 1
+run make -j${processors} || exit 1
 
 if [ "${BASH_VERSINFO[0]}" -ge "4" ]
 then
@@ -555,7 +561,7 @@ if [ ${UID} -eq 0 ]
     if [ $? -ne 0 ]
         then
         echo >&2 "Adding netdata user account ..."
-        run useradd -r -g netdata -c netdata -s $(which nologin || echo '/bin/false') -d / netdata
+        run useradd -r -g netdata -c netdata -s $(which nologin 2>/dev/null || command -v nologin 2>/dev/null || echo '/bin/false') -d / netdata
     fi
 
     getent group docker > /dev/null
@@ -713,40 +719,42 @@ isnetdata() {
 }
 
 stop_netdata_on_pid() {
-    local pid="$1" ret=0 count=0
+    local pid="${1}" ret=0 count=0
 
-    isnetdata $pid || return 0
+    isnetdata ${pid} || return 0
 
-    printf >&2 "Stopping netdata on pid $pid ..."
-    while [ ! -z "$pid" -a $ret -eq 0 ]
+    printf >&2 "Stopping netdata on pid ${pid} ..."
+    while [ ! -z "$pid" -a ${ret} -eq 0 ]
     do
-        if [ $count -gt 45 ]
+        if [ ${count} -gt 45 ]
             then
-            echo >&2 "Cannot stop the running netdata on pid $pid."
+            echo >&2 "Cannot stop the running netdata on pid ${pid}."
             return 1
         fi
 
         count=$(( count + 1 ))
 
-        run kill $pid 2>/dev/null
+        run kill ${pid} 2>/dev/null
         ret=$?
 
-        test $ret -eq 0 && printf >&2 "." && sleep 2
+        test ${ret} -eq 0 && printf >&2 "." && sleep 2
     done
 
     echo >&2
-    if [ $ret -eq 0 ]
+    if [ ${ret} -eq 0 ]
     then
-        echo >&2 "SORRY! CANNOT STOP netdata ON PID $pid !"
+        echo >&2 "SORRY! CANNOT STOP netdata ON PID ${pid} !"
         return 1
     fi
 
-    echo >&2 "netdata on pid $pid stopped."
+    echo >&2 "netdata on pid ${pid} stopped."
     return 0
 }
 
 stop_all_netdata() {
-    local p
+    local p myns ns
+
+    myns="$(readlink /proc/self/ns/pid 2>/dev/null)"
 
     echo >&2 "Stopping a (possibly) running netdata..."
 
@@ -755,22 +763,44 @@ stop_all_netdata() {
         $(cat /var/run/netdata/netdata.pid 2>/dev/null) \
         $(pidof netdata 2>/dev/null)
     do
-        stop_netdata_on_pid $p
+        ns="$(readlink /proc/${p}/ns/pid 2>/dev/null)"
+
+        if [ -z "${myns}" -o -z "${ns}" -o "${myns}" = "${ns}" ]
+            then
+            stop_netdata_on_pid ${p}
+        fi
     done
 }
 
 # -----------------------------------------------------------------------------
-# check netdata for systemd
+# check for systemd
 
 issystemd() {
+    local pids p myns ns systemctl
+
     # if the directory /etc/systemd/system does not exit, it is not systemd
     [ ! -d /etc/systemd/system ] && return 1
+
+    # if there is no systemctl command, it is not systemd
+    systemctl=$(which systemctl 2>/dev/null || command -v systemctl 2>/dev/null)
+    [ -z "${systemctl}" -o ! -x "${systemctl}" ] && return 1
 
     # if pid 1 is systemd, it is systemd
     [ "$(basename $(readlink /proc/1/exe) 2>/dev/null)" = "systemd" ] && return 0
 
-    # if systemd is running, it is systemd
-    pidof systemd >/dev/null 2>&1 && return 0
+    # if systemd is not running, it is not systemd
+    pids=$(pidof systemd 2>/dev/null)
+    [ -z "${pids}" ] && return 1
+
+    # check if the running systemd processes are not in our namespace
+    myns="$(readlink /proc/self/ns/pid 2>/dev/null)"
+    for p in ${pids}
+    do
+        ns="$(readlink /proc/${p}/ns/pid 2>/dev/null)"
+
+        # if pid of systemd is in our namespace, it is systemd
+        [ ! -z "${myns}" && "${myns}" = "${ns}" ] && return 0
+    done
 
     # else, it is not systemd
     return 1
@@ -854,13 +884,13 @@ if [ ! -s "${NETDATA_PREFIX}/etc/netdata/netdata.conf" ]
     ret=$?
 
     # try curl
-    if [ $ret -ne 0 -o ! -s "${NETDATA_PREFIX}/etc/netdata/netdata.conf.new" ]
+    if [ ${ret} -ne 0 -o ! -s "${NETDATA_PREFIX}/etc/netdata/netdata.conf.new" ]
         then
         curl -s -o "${NETDATA_PREFIX}/etc/netdata/netdata.conf.new" "http://localhost:${NETDATA_PORT}/netdata.conf"
         ret=$?
     fi
 
-    if [ $ret -eq 0 -a -s "${NETDATA_PREFIX}/etc/netdata/netdata.conf.new" ]
+    if [ ${ret} -eq 0 -a -s "${NETDATA_PREFIX}/etc/netdata/netdata.conf.new" ]
         then
         mv "${NETDATA_PREFIX}/etc/netdata/netdata.conf.new" "${NETDATA_PREFIX}/etc/netdata/netdata.conf"
         echo >&2 "New configuration saved for you to edit at ${NETDATA_PREFIX}/etc/netdata/netdata.conf"

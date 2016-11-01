@@ -133,6 +133,12 @@ netdataDashboard.menu = {
         info: undefined
     },
 
+    'fping': {
+        title: 'fping',
+        icon: '<i class="fa fa-exchange" aria-hidden="true"></i>',
+        info: undefined
+    },
+
     'memcached': {
         title: 'memcached',
         icon: '<i class="fa fa-database" aria-hidden="true"></i>',
@@ -141,6 +147,12 @@ netdataDashboard.menu = {
 
     'mysql': {
         title: 'MySQL',
+        icon: '<i class="fa fa-database" aria-hidden="true"></i>',
+        info: undefined
+    },
+
+    'postgres': {
+        title: 'Postgres',
         icon: '<i class="fa fa-database" aria-hidden="true"></i>',
         info: undefined
     },
@@ -274,7 +286,8 @@ netdataDashboard.submenu = {
 //
 netdataDashboard.context = {
     'system.cpu': {
-        info: 'Total CPU utilization (all cores). 100% here means there is no CPU idle time at all. You can get per core usage at the <a href="#cpu">CPUs</a> section and per application usage at the <a href="#apps">Applications Monitoring</a> section.<br/>Keep an eye on <b>iowait</b> ' + sparkline('system.cpu', 'iowait', '%') + '. If it is constantly high, your disks are a bottleneck and they slow your system down.<br/>Another important metric worth monitoring, is <b>softirq</b> ' + sparkline('system.cpu', 'softirq', '%') + '. A constantly high percentage of softirq may indicate network drivers issues.'
+        info: 'Total CPU utilization (all cores). 100% here means there is no CPU idle time at all. You can get per core usage at the <a href="#cpu">CPUs</a> section and per application usage at the <a href="#apps">Applications Monitoring</a> section.<br/>Keep an eye on <b>iowait</b> ' + sparkline('system.cpu', 'iowait', '%') + '. If it is constantly high, your disks are a bottleneck and they slow your system down.<br/>Another important metric worth monitoring, is <b>softirq</b> ' + sparkline('system.cpu', 'softirq', '%') + '. A constantly high percentage of softirq may indicate network drivers issues.',
+        valueRange: "[0, 100]"
     },
 
     'system.load': {
@@ -697,8 +710,9 @@ netdataDashboard.context = {
 
     // ------------------------------------------------------------------------
     // RETROSHARE
+
     'retroshare.bandwidth': {
-        info: 'Shows inbound and outbound traffic.',
+        info: 'RetroShare inbound and outbound traffic.',
         mainheads: [
             netdataDashboard.gaugeChart('Received', '12%', 'bandwidth_down_kb'),
             netdataDashboard.gaugeChart('Sent', '12%', 'bandwidth_up_kb')
@@ -706,7 +720,7 @@ netdataDashboard.context = {
     },
 
     'retroshare.peers': {
-        info: 'Shows the number of (connected) friends.',
+        info: 'Number of (connected) RetroShare friends.',
         mainheads: [
             function(id) {
                 return  '<div data-netdata="' + id + '"'
@@ -725,6 +739,19 @@ netdataDashboard.context = {
     },
 
     'retroshare.dht': {
-        info: 'Shows statistics about RetroShare\'s DHT. These values are estimated!'
+        info: 'Statistics about RetroShare\'s DHT. These values are estimated!'
+    },
+
+    // ------------------------------------------------------------------------
+    // fping
+
+    'fping.loss': {
+        colors: NETDATA.colors[1],
+        height: 0.5
+    },
+
+    'fping.packets': {
+        height: 0.5
     }
+
 };
